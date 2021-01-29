@@ -1099,6 +1099,9 @@ class Dashboard(ChangeTrackingMixin, TimestampMixin, BelongsToOrgMixin, db.Model
     tags = Column(
         "tags", MutableList.as_mutable(postgresql.ARRAY(db.Unicode)), nullable=True
     )
+    options = Column(
+        MutableDict.as_mutable(postgresql.JSON), server_default="{}", default={}
+    )
 
     __tablename__ = "dashboards"
     __mapper_args__ = {"version_id_col": version}
@@ -1132,7 +1135,6 @@ class Dashboard(ChangeTrackingMixin, TimestampMixin, BelongsToOrgMixin, db.Model
                 ),
                 Dashboard.org == org,
             )
-            .distinct()
         )
 
         query = query.filter(
@@ -1351,7 +1353,14 @@ class NotificationDestination(BelongsToOrgMixin, db.Model):
     user = db.relationship(User, backref="notification_destinations")
     name = Column(db.String(255))
     type = Column(db.String(255))
-    options = Column(ConfigurationContainer.as_mutable(Configuration))
+    options = Column(
+        "encrypted_options",
+        ConfigurationContainer.as_mutable(
+            EncryptedConfiguration(
+                db.Text, settings.DATASOURCE_SECRET_KEY, FernetEngine
+            )
+        ),
+    )
     created_at = Column(db.DateTime(True), default=db.func.now())
 
     __tablename__ = "notification_destinations"
