@@ -135,9 +135,12 @@ class YandexMetrica(BaseSQLQueryRunner):
         response_data = r.json()
 
         if not r.ok:
+
+            error_message = "Code: {0}, message: {1}".format(r.status_code, r.text)
+
             if response_data["code"] == 429:
-                raise QuotaException(r.text)
-            raise Exception(r.text)
+                raise QuotaException(error_message)
+            raise Exception(error_message)
         return response_data
 
     def run_query(self, query, user):
