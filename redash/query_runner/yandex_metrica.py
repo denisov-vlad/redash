@@ -2,6 +2,7 @@ import logging
 import yaml
 from urllib.parse import parse_qs, urlparse
 
+import backoff
 import requests
 
 from redash.query_runner import *
@@ -72,6 +73,10 @@ def parse_ym_response(response):
     return {"columns": columns, "rows": rows}
 
 
+class QuotaException(Exception):
+    pass
+
+
 class YandexMetrica(BaseSQLQueryRunner):
     should_annotate_query = False
 
@@ -118,6 +123,7 @@ class YandexMetrica(BaseSQLQueryRunner):
     def test_connection(self):
         self._send_query("management/v1/{0}".format(self.list_path))
 
+    @backoff.on_exception(backoff.expo, QuotaException, max_tries=3)
     def _send_query(self, path="stat/v1/data", **kwargs):
         token = kwargs.pop("oauth_token", self.configuration["token"])
         r = requests.get(
@@ -125,9 +131,14 @@ class YandexMetrica(BaseSQLQueryRunner):
             headers={"Authorization": "OAuth {}".format(token)},
             params=kwargs,
         )
-        if r.status_code != 200:
+
+        response_data = r.json()
+
+        if not r.ok:
+            if response_data["code"] == 429:
+                raise QuotaException(r.text)
             raise Exception(r.text)
-        return r.json()
+        return response_data
 
     def run_query(self, query, user):
         logger.debug("Metrica is about to execute query: %s", query)
