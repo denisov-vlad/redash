@@ -123,7 +123,7 @@ class YandexMetrica(BaseSQLQueryRunner):
     def test_connection(self):
         self._send_query("management/v1/{0}".format(self.list_path))
 
-    @backoff.on_exception(backoff.expo, QuotaException, max_tries=3)
+    @backoff.on_exception(backoff.fibo, QuotaException, max_tries=10)
     def _send_query(self, path="stat/v1/data", **kwargs):
         token = kwargs.pop("oauth_token", self.configuration["token"])
         r = requests.get(
@@ -132,16 +132,12 @@ class YandexMetrica(BaseSQLQueryRunner):
             params=kwargs,
         )
 
-        response_data = r.json()
-
         if not r.ok:
-
             error_message = "Code: {0}, message: {1}".format(r.status_code, r.text)
-
-            if response_data["code"] == 429:
+            if r.status_code == 429:
                 raise QuotaException(error_message)
             raise Exception(error_message)
-        return response_data
+        return r.json()
 
     def run_query(self, query, user):
         logger.debug("Metrica is about to execute query: %s", query)
