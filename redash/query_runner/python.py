@@ -16,6 +16,7 @@ try:
 except ImportError:
     pandas_installed = False
 
+from RestrictedPython.transformer import IOPERATOR_TO_STR
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,14 @@ class Python(BaseQueryRunner):
         return iter(obj)
 
     @staticmethod
+    def custom_inplacevar(op, x, y):
+        if op not in IOPERATOR_TO_STR.values():
+            raise Exception("'{} is not supported inplace variable'".format(op))
+        glb = {"x": x, "y": y}
+        exec("x" + op + "y", glb)
+        return glb["x"]
+
+    @staticmethod
     def add_result_column(result, column_name, friendly_name, column_type):
         """Helper function to add columns inside a Python script running in Redash in an easier way
 
@@ -186,7 +195,7 @@ class Python(BaseQueryRunner):
         result["rows"].append(values)
 
     @staticmethod
-    def execute_query(data_source_name_or_id, query):
+    def execute_query(data_source_name_or_id, query, result_type=None):
         """Run query from specific data source.
 
         Parameters:
@@ -207,7 +216,13 @@ class Python(BaseQueryRunner):
             raise Exception(error)
 
         # TODO: allow avoiding the JSON dumps/loads in same process
-        return json_loads(data)
+        query_result = json_loads(data)
+
+        if result_type == "dataframe" and pandas_installed:
+            return pd.DataFrame(query_result["rows"])
+
+        return query_result
+
 
     @staticmethod
     def get_source_schema(data_source_name_or_id):
@@ -295,6 +310,7 @@ class Python(BaseQueryRunner):
             builtins["_print_"] = self._custom_print
             builtins["_unpack_sequence_"] = guarded_unpack_sequence
             builtins["_iter_unpack_sequence_"] = guarded_iter_unpack_sequence
+            builtins["_inplacevar_"] = self.custom_inplacevar
 
             # Layer in our own additional set of builtins that we have
             # considered safe.
