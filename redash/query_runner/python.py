@@ -8,6 +8,14 @@ from redash.utils import json_dumps, json_loads
 from redash import models
 from RestrictedPython import compile_restricted
 from RestrictedPython.Guards import safe_builtins, guarded_iter_unpack_sequence, guarded_unpack_sequence
+
+try:
+    import pandas as pd
+    import numpy as np
+    pandas_installed = True
+except ImportError:
+    pandas_installed = False
+
 from RestrictedPython.transformer import IOPERATOR_TO_STR
 
 logger = logging.getLogger(__name__)
@@ -187,7 +195,7 @@ class Python(BaseQueryRunner):
         result["rows"].append(values)
 
     @staticmethod
-    def execute_query(data_source_name_or_id, query):
+    def execute_query(data_source_name_or_id, query, result_type=None):
         """Run query from specific data source.
 
         Parameters:
@@ -208,7 +216,13 @@ class Python(BaseQueryRunner):
             raise Exception(error)
 
         # TODO: allow avoiding the JSON dumps/loads in same process
-        return json_loads(data)
+        query_result = json_loads(data)
+
+        if result_type == "dataframe" and pandas_installed:
+            return pd.DataFrame(query_result["rows"])
+
+        return query_result
+
 
     @staticmethod
     def get_source_schema(data_source_name_or_id):
@@ -246,6 +260,29 @@ class Python(BaseQueryRunner):
             raise Exception("Query does not have results yet.")
 
         return query.latest_query_data.data
+
+    def dataframe_to_result(self, result, df):
+
+        result["rows"] = df.to_dict("records")
+
+        for column_name, column_type in df.dtypes.items():
+            if column_type == np.bool:
+                redash_type = TYPE_BOOLEAN
+            elif column_type == np.inexact:
+                redash_type = TYPE_FLOAT
+            elif column_type == np.integer:
+                redash_type = TYPE_INTEGER
+            elif column_type in (np.datetime64, np.dtype('<M8[ns]')):
+                if df.empty:
+                    redash_type = TYPE_DATETIME
+                elif len(df[column_name].head(1).astype(str).loc[0]) > 10:
+                    redash_type = TYPE_DATETIME
+                else:
+                    redash_type = TYPE_DATE
+            else:
+                redash_type = TYPE_STRING
+
+            self.add_result_column(result, column_name, column_name, redash_type)
 
     def get_current_user(self):
         return self._current_user.to_dict()
@@ -286,6 +323,8 @@ class Python(BaseQueryRunner):
             restricted_globals["get_current_user"] = self.get_current_user
             restricted_globals["execute_query"] = self.execute_query
             restricted_globals["add_result_column"] = self.add_result_column
+            if pandas_installed:
+                restricted_globals["dataframe_to_result"] = self.dataframe_to_result
             restricted_globals["add_result_row"] = self.add_result_row
             restricted_globals["disable_print_log"] = self._custom_print.disable
             restricted_globals["enable_print_log"] = self._custom_print.enable
@@ -312,6 +351,5 @@ class Python(BaseQueryRunner):
             json_data = None
 
         return json_data, error
-
 
 register(Python)
