@@ -64,7 +64,11 @@ INVITATION_TOKEN_MAX_AGE = int(
 )
 
 # The secret key to use in the Flask app for various cryptographic features
-SECRET_KEY = os.environ.get("REDASH_COOKIE_SECRET", "c292a0a3aa32397cdb050e233733900f")
+SECRET_KEY = os.environ.get("REDASH_COOKIE_SECRET")
+
+if SECRET_KEY is None:
+    raise Exception("You must set the REDASH_COOKIE_SECRET environment variable. Visit http://redash.io/help/open-source/admin-guide/secrets for more information.")
+
 # The secret key to use when encrypting data source options
 DATASOURCE_SECRET_KEY = os.environ.get("REDASH_SECRET_KEY", SECRET_KEY)
 
@@ -341,6 +345,7 @@ default_query_runners = [
     "redash.query_runner.url",
     "redash.query_runner.influx_db",
     "redash.query_runner.elasticsearch",
+    "redash.query_runner.elasticsearch2",
     "redash.query_runner.amazon_elasticsearch",
     "redash.query_runner.trino",
     "redash.query_runner.presto",
@@ -383,7 +388,9 @@ default_query_runners = [
     "redash.query_runner.sparql_endpoint",
     "redash.query_runner.excel",
     "redash.query_runner.csv",
-    "redash.query_runner.firebolt"
+    "redash.query_runner.firebolt",
+    "redash.query_runner.nz",
+    "redash.query_runner.arango"
 ]
 
 enabled_query_runners = array_from_string(
