@@ -53,7 +53,7 @@ def _get_columns_and_column_names(row):
     return columns, column_names
 
 
-def _value_eval_list(row_values, col_types):
+def _value_eval_list(row_values, col_types, datetime_parser):
     value_list = []
     raw_values = zip(col_types, row_values)
     for typ, rval in raw_values:
@@ -63,7 +63,10 @@ def _value_eval_list(row_values, col_types):
             elif typ == TYPE_BOOLEAN:
                 val = True if str(rval).lower() == "true" else False
             elif typ == TYPE_DATETIME:
-                val = parser.parse(rval)
+                if datetime_parser == "default":
+                    val = parser.parse(rval)
+                elif datetime_parser == "isoparser":
+                    val = parser.isoparse(rval)
             elif typ == TYPE_FLOAT:
                 val = float(rval)
             elif typ == TYPE_INTEGER:
@@ -98,7 +101,7 @@ def parse_query(query):
     return key, worksheet_num
 
 
-def parse_worksheet(worksheet):
+def parse_worksheet(worksheet, datetime_parser):
     if not worksheet:
         return {"columns": [], "rows": []}
 
@@ -115,7 +118,7 @@ def parse_worksheet(worksheet):
     return data
 
 
-def parse_spreadsheet(spreadsheet, worksheet_num):
+def parse_spreadsheet(spreadsheet, worksheet_num, datetime_parser):
     worksheets = spreadsheet.worksheets()
     worksheet_count = len(worksheets)
     if worksheet_num >= worksheet_count:
@@ -123,7 +126,7 @@ def parse_spreadsheet(spreadsheet, worksheet_num):
 
     worksheet = worksheets[worksheet_num].get_all_values()
 
-    return parse_worksheet(worksheet)
+    return parse_worksheet(worksheet, datetime_parser)
 
 
 def is_url_key(key):
@@ -170,7 +173,18 @@ class GoogleSpreadsheet(BaseQueryRunner):
     def configuration_schema(cls):
         return {
             "type": "object",
-            "properties": {"jsonKeyFile": {"type": "string", "title": "JSON Key File"}},
+            "properties": {
+                "jsonKeyFile": {"type": "string", "title": "JSON Key File"},
+                "datetimeParser": {
+                    "type": "string",
+                    "extendedEnum": [
+                        {"value": "default", "name": "Default"},
+                        {"value": "isoparser", "name": "ISOParser"},
+                        {"value": "disabled", "name": "Disabled"},
+                    ],
+                    "title": "Datetime parser",
+                },
+            },
             "required": ["jsonKeyFile"],
             "secret": ["jsonKeyFile"],
         }
@@ -198,6 +212,7 @@ class GoogleSpreadsheet(BaseQueryRunner):
 
     def run_query(self, query, user):
         logger.debug("Spreadsheet is about to execute query: %s", query)
+        datetime_parser = self.configuration.get("datetimeParser", "default")
         key, worksheet_num = parse_query(query)
 
         try:
@@ -208,7 +223,7 @@ class GoogleSpreadsheet(BaseQueryRunner):
             else:
                 spreadsheet = spreadsheet_service.open_by_key(key)
 
-            data = parse_spreadsheet(spreadsheet, worksheet_num)
+            data = parse_spreadsheet(spreadsheet, worksheet_num, datetime_parser)
 
             return json_dumps(data), None
         except gspread.SpreadsheetNotFound:
